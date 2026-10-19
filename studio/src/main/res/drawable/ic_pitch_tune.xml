@@ -1,0 +1,10 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <!-- Tuning Fork / Pitch Indicator SVG Icon -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M12,2a1,1 0 0,0 -1,1v8.18A3,3 0 0,0 9,14v6a3,3 0 0,0 6,0v-6a3,3 0 0,0 -2,-2.82V3a1,1 0 0,0 -1,-1zm-5,0a1,1 0 0,0 -1,1v7a4,4 0 0,0 3,3.86V12a2,2 0 0,1 -1,-1.72V3a1,1 0 0,0 -1,-1zm10,0a1,1 0 0,0 -1,1v7a2,2 0 0,1 -1,1.72v1.86A4,4 0 0,0 18,10V3a1,1 0 0,0 -1,-1z" />
+</vector>

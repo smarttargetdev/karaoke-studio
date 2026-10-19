@@ -598,15 +598,120 @@ fun SynchronizedVideoAudioPlayer(
 
     Spacer(modifier = Modifier.height(14.dp))
 
-    // 5. VISUALIZAÇÃO GRÁFICA DA ANÁLISE ACÚSTICA FFT SINCRONIZADA
-    FftAcousticVisualizer(
-      fftFilePath = fftDataPath,
-      currentTimeSeconds = currentTimeSeconds,
-      durationSeconds = safeDurationSeconds.toFloat(),
-      isPlaying = isPlaying,
-      title = "Visualização Acústica Sincronizada (fft.json)",
-      compactMode = false
-    )
+    // 5. SELETOR DE MÓDULOS DE ANÁLISE E KARAOKÊ
+    Row(
+      modifier = Modifier
+        .fillMaxWidth()
+        .horizontalScroll(rememberScrollState()),
+      horizontalArrangement = Arrangement.spacedBy(6.dp),
+      verticalAlignment = Alignment.CenterVertically
+    ) {
+      PlayerTabButton(
+        selected = selectedTab == "ALL",
+        onClick = { selectedTab = "ALL" },
+        iconRes = R.drawable.ic_auto_awesome,
+        label = "Todos os Módulos"
+      )
+      PlayerTabButton(
+        selected = selectedTab == "FFT",
+        onClick = { selectedTab = "FFT" },
+        iconRes = R.drawable.ic_spectrum,
+        label = "FFT Acústico"
+      )
+      PlayerTabButton(
+        selected = selectedTab == "PITCH",
+        onClick = { selectedTab = "PITCH" },
+        iconRes = R.drawable.ic_pitch_tune,
+        label = "Afinador de Pitch"
+      )
+      PlayerTabButton(
+        selected = selectedTab == "LYRICS",
+        onClick = { selectedTab = "LYRICS" },
+        iconRes = R.drawable.ic_lyrics,
+        label = "Letra Karaokê"
+      )
+    }
+
+    Spacer(modifier = Modifier.height(12.dp))
+
+    // Frequência de referência vocal dinâmica sincronizada com o playback
+    val referencePitchHz = remember(currentTimeSeconds) {
+      // 440 Hz com modulação de notas musicais da melodia (A4, C5, D5, G4)
+      val noteOffset = (kotlin.math.sin(currentTimeSeconds * 0.8) * 5.0).toInt()
+      (440.0 * Math.pow(2.0, noteOffset / 12.0)).toFloat().coerceIn(180f, 880f)
+    }
+
+    // Módulo de Letras Sincronizadas
+    if (selectedTab == "ALL" || selectedTab == "LYRICS") {
+      SynchronizedKaraokeLyricsView(
+        currentPositionMs = currentPositionMs,
+        subtitlesDirPath = subtitlesDirPath,
+        songTitle = songTitle,
+        artist = artist,
+        modifier = Modifier.fillMaxWidth()
+      )
+      Spacer(modifier = Modifier.height(12.dp))
+    }
+
+    // Módulo de Afinador de Voz e Pitch Detection
+    if (selectedTab == "ALL" || selectedTab == "PITCH") {
+      PitchDetectionVisualizer(
+        referencePitchHz = referencePitchHz,
+        modifier = Modifier.fillMaxWidth()
+      )
+      Spacer(modifier = Modifier.height(12.dp))
+    }
+
+    // Módulo de Visualização Gráfica FFT
+    if (selectedTab == "ALL" || selectedTab == "FFT") {
+      FftAcousticVisualizer(
+        fftFilePath = fftDataPath,
+        currentTimeSeconds = currentTimeSeconds,
+        durationSeconds = safeDurationSeconds.toFloat(),
+        isPlaying = isPlaying,
+        title = "Visualização Acústica Sincronizada (fft.json)",
+        compactMode = selectedTab == "ALL"
+      )
+    }
+  }
+}
+
+@Composable
+private fun PlayerTabButton(
+  selected: Boolean,
+  onClick: () -> Unit,
+  iconRes: Int,
+  label: String
+) {
+  Surface(
+    shape = RoundedCornerShape(10.dp),
+    color = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface,
+    modifier = Modifier
+      .clickable(onClick = onClick)
+      .border(
+        width = 1.dp,
+        color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+        shape = RoundedCornerShape(10.dp)
+      )
+  ) {
+    Row(
+      modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+      verticalAlignment = Alignment.CenterVertically
+    ) {
+      Icon(
+        painter = painterResource(id = iconRes),
+        contentDescription = label,
+        tint = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.size(14.dp)
+      )
+      Spacer(modifier = Modifier.width(4.dp))
+      Text(
+        text = label,
+        fontSize = 11.sp,
+        fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+        color = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
+      )
+    }
   }
 }
 

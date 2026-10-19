@@ -587,15 +587,28 @@ fun KaraokeAssetCard(
 
             Surface(
               shape = RoundedCornerShape(4.dp),
-              color = MaterialTheme.colorScheme.surfaceVariant
+              color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.8f),
+              modifier = Modifier.clickable { onPlay() }
             ) {
-              Text(
-                text = "fft.json",
-                fontSize = 9.sp,
-                fontFamily = FontFamily.Monospace,
-                color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
-              )
+              Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
+              ) {
+                Icon(
+                  painter = painterResource(id = R.drawable.ic_spectrum),
+                  contentDescription = "FFT Acústico Sincronizado",
+                  tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                  modifier = Modifier.size(10.dp)
+                )
+                Spacer(modifier = Modifier.width(3.dp))
+                Text(
+                  text = "fft.json",
+                  fontSize = 9.sp,
+                  fontFamily = FontFamily.Monospace,
+                  fontWeight = FontWeight.Bold,
+                  color = MaterialTheme.colorScheme.onPrimaryContainer
+                )
+              }
             }
           }
         }
