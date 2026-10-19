@@ -3,6 +3,7 @@
 # ==========================================
 # Caches e daemons voláteis do Gradle (não versionar)
 .gradle/
+.kotlin/
 
 # Diretórios de build raiz e sub-módulos
 build/
