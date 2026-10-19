@@ -1,0 +1,6 @@
+{
+  "name": "Karaoke Studio",
+  "description": "Estúdio de karaokê para extração de áudio M4A, vídeo preview M4V, FFT em fft.json, análise acústica da música e legendas pt-BR.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
