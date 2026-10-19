@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import br.com.smarttarget.karaoke.studio.KaraokeStudioApplication
+import br.com.smarttarget.karaoke.studio.data.local.KaraokeAssetEntity
 import br.com.smarttarget.karaoke.studio.data.model.AudioFormatOption
 import br.com.smarttarget.karaoke.studio.data.model.DownloadItem
 import br.com.smarttarget.karaoke.studio.data.model.MusicMetadata
@@ -19,10 +20,13 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.File
 import java.util.UUID
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
@@ -31,16 +35,115 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
   private val downloadManager = app.downloadManager
   private val preferencesRepo = app.preferencesRepo
   private val ytDlpEngine = app.ytDlpEngine
+  val libraryRepo = app.libraryRepo
 
-  // Navigation: "search", "browser", "queue", "settings"
-  private val _currentTab = MutableStateFlow("search")
+  // Navigation: "library", "search", "browser", "queue", "settings"
+  private val _currentTab = MutableStateFlow("library")
   val currentTab: StateFlow<String> = _currentTab.asStateFlow()
 
   fun setTab(tab: String) {
     _currentTab.value = tab
   }
 
+  // -------------------------------------------------------------------------
+  // Library Database State & Reactive Search
+  // -------------------------------------------------------------------------
+  private val _librarySearchQuery = MutableStateFlow("")
+  val librarySearchQuery: StateFlow<String> = _librarySearchQuery.asStateFlow()
+
+  private val _librarySelectedGenre = MutableStateFlow("ALL")
+  val librarySelectedGenre: StateFlow<String> = _librarySelectedGenre.asStateFlow()
+
+  private val _libraryOnlyFavorites = MutableStateFlow(false)
+  val libraryOnlyFavorites: StateFlow<Boolean> = _libraryOnlyFavorites.asStateFlow()
+
+  private val _librarySortOrder = MutableStateFlow("RECENT") // "RECENT", "TITLE_ASC", "DURATION"
+  val librarySortOrder: StateFlow<String> = _librarySortOrder.asStateFlow()
+
+  val libraryAssets: StateFlow<List<KaraokeAssetEntity>> = combine(
+    libraryRepo.allAssets,
+    _librarySearchQuery,
+    _librarySelectedGenre,
+    _libraryOnlyFavorites,
+    _librarySortOrder
+  ) { all, query, genre, onlyFavs, sort ->
+    var filtered = all
+
+    if (query.isNotBlank()) {
+      val q = query.trim().lowercase()
+      filtered = filtered.filter { asset ->
+        asset.songTitle.lowercase().contains(q) ||
+        asset.originalTitle.lowercase().contains(q) ||
+        asset.singers.lowercase().contains(q) ||
+        asset.composers.lowercase().contains(q) ||
+        asset.genre.lowercase().contains(q) ||
+        (asset.album?.lowercase()?.contains(q) == true) ||
+        (asset.workTitle?.lowercase()?.contains(q) == true) ||
+        asset.guid.lowercase().contains(q)
+      }
+    }
+
+    if (genre != "ALL") {
+      filtered = filtered.filter { it.genre.equals(genre, ignoreCase = true) }
+    }
+
+    if (onlyFavs) {
+      filtered = filtered.filter { it.isFavorite }
+    }
+
+    when (sort) {
+      "TITLE_ASC" -> filtered.sortedBy { it.songTitle.lowercase() }
+      "DURATION" -> filtered.sortedByDescending { it.durationSeconds }
+      else -> filtered.sortedByDescending { it.createdAt }
+    }
+  }.stateIn(
+    scope = viewModelScope,
+    started = SharingStarted.WhileSubscribed(5000),
+    initialValue = emptyList()
+  )
+
+  val libraryTotalCount: StateFlow<Int> = libraryRepo.totalCount.stateIn(
+    scope = viewModelScope,
+    started = SharingStarted.WhileSubscribed(5000),
+    initialValue = 0
+  )
+
+  fun setLibrarySearchQuery(q: String) {
+    _librarySearchQuery.value = q
+  }
+
+  fun setLibrarySelectedGenre(g: String) {
+    _librarySelectedGenre.value = g
+  }
+
+  fun toggleLibraryFavoritesOnly() {
+    _libraryOnlyFavorites.value = !_libraryOnlyFavorites.value
+  }
+
+  fun setLibrarySortOrder(order: String) {
+    _librarySortOrder.value = order
+  }
+
+  fun toggleAssetFavorite(guid: String, isFav: Boolean) {
+    viewModelScope.launch {
+      libraryRepo.toggleFavorite(guid, isFav)
+    }
+  }
+
+  fun deleteLibraryAsset(asset: KaraokeAssetEntity) {
+    viewModelScope.launch {
+      libraryRepo.delete(asset)
+      app.database.downloadDao().deleteById(asset.guid)
+    }
+  }
+
+  fun playLibraryAsset(asset: KaraokeAssetEntity) {
+    _playingItem.value = asset.toDownloadItem()
+  }
+
+  // -------------------------------------------------------------------------
   // Browser & yt-dlp Analysis State
+  // -------------------------------------------------------------------------
   private val _browserUrl = MutableStateFlow("https://m.youtube.com")
   val browserUrl: StateFlow<String> = _browserUrl.asStateFlow()
 
@@ -101,7 +204,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
   val classicalWorkType: StateFlow<String> = _classicalWorkType.asStateFlow()
 
   // Format Selection Options
-  private val _selectedMediaType = MutableStateFlow("AUDIO_M4A") // "AUDIO_M4A" or "VIDEO"
+  private val _selectedMediaType = MutableStateFlow("AUDIO_M4A")
   val selectedMediaType: StateFlow<String> = _selectedMediaType.asStateFlow()
 
   private val _selectedVideoFormat = MutableStateFlow<VideoFormatOption?>(null)
@@ -156,6 +259,147 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
   val audioContainer: StateFlow<String> = preferencesRepo.audioContainer
   val backgroundDownload: StateFlow<Boolean> = preferencesRepo.backgroundDownload
   val consoleLogs: StateFlow<List<String>> = ytDlpEngine.consoleLogs
+
+  init {
+    seedInitialLibraryIfEmpty()
+  }
+
+  private fun seedInitialLibraryIfEmpty() {
+    viewModelScope.launch {
+      val existing = app.database.karaokeAssetDao().getAllAssets().first()
+      if (existing.isEmpty()) {
+        val basePath = preferencesRepo.baseAssetsFolder.value
+        val sampleGuid1 = "c7e19f84820a451da7bb3fa394e1d101"
+        val sampleGuid2 = "b41a876d9012435ca82ff30048123002"
+        val sampleGuid3 = "e892c57f61104e8499de74838402a003"
+        val sampleGuid4 = "a2034988bc77478fa91873491823f004"
+
+        val initialAssets = listOf(
+          KaraokeAssetEntity(
+            guid = sampleGuid1,
+            songTitle = "Evidências",
+            originalTitle = "Chitãozinho & Xororó - Evidências (Karaokê Oficial)",
+            channelOrArtist = "Chitãozinho & Xororó",
+            genre = "Sertanejo",
+            singers = "Chitãozinho & Xororó",
+            composers = "José Augusto, Paulo Sérgio Valle",
+            album = "Cowboy do Asfalto",
+            workTitle = "Evidências",
+            recordingDate = "1990",
+            compositionDate = "1989",
+            classicalEra = null,
+            classicalWorkType = null,
+            assetDirPath = "/storage/emulated/0/Download/$basePath/$sampleGuid1",
+            audioPath = "/storage/emulated/0/Download/$basePath/$sampleGuid1/audio.m4a",
+            previewVideoPath = "/storage/emulated/0/Download/$basePath/$sampleGuid1/preview.m4v",
+            fftDataPath = "/storage/emulated/0/Download/$basePath/$sampleGuid1/fft.json",
+            subtitlesDirPath = "/storage/emulated/0/Download/$basePath/$sampleGuid1/subtitles",
+            metadataJsonPath = "/storage/emulated/0/Download/$basePath/$sampleGuid1/metadata.json",
+            thumbnailUrl = "https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=600&auto=format&fit=crop&q=80",
+            durationSeconds = 290L,
+            audioFormat = "m4a",
+            videoFormat = "m4v",
+            videoResolution = "1080p Full HD",
+            audioBitrate = "320 kbps",
+            metadataJson = "{\"song_title\":\"Evidências\",\"genre\":\"Sertanejo\",\"album\":\"Cowboy do Asfalto\",\"recording_date\":\"1990\"}",
+            isFavorite = true,
+            createdAt = System.currentTimeMillis() - 3600_000
+          ),
+          KaraokeAssetEntity(
+            guid = sampleGuid2,
+            songTitle = "Boate Azul",
+            originalTitle = "Boate Azul - Joaquim & Manuel (Playback com Letra)",
+            channelOrArtist = "Joaquim & Manuel",
+            genre = "Sertanejo",
+            singers = "Joaquim & Manuel",
+            composers = "Benedito Seviero, Aparecido Tomás da Silva",
+            album = "Boate Azul",
+            workTitle = "Boate Azul",
+            recordingDate = "1982",
+            compositionDate = "1963",
+            classicalEra = null,
+            classicalWorkType = null,
+            assetDirPath = "/storage/emulated/0/Download/$basePath/$sampleGuid2",
+            audioPath = "/storage/emulated/0/Download/$basePath/$sampleGuid2/audio.m4a",
+            previewVideoPath = "/storage/emulated/0/Download/$basePath/$sampleGuid2/preview.m4v",
+            fftDataPath = "/storage/emulated/0/Download/$basePath/$sampleGuid2/fft.json",
+            subtitlesDirPath = "/storage/emulated/0/Download/$basePath/$sampleGuid2/subtitles",
+            metadataJsonPath = "/storage/emulated/0/Download/$basePath/$sampleGuid2/metadata.json",
+            thumbnailUrl = "https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=600&auto=format&fit=crop&q=80",
+            durationSeconds = 215L,
+            audioFormat = "m4a",
+            videoFormat = "m4v",
+            videoResolution = "720p HD",
+            audioBitrate = "320 kbps",
+            metadataJson = "{\"song_title\":\"Boate Azul\",\"genre\":\"Sertanejo\",\"album\":\"Boate Azul\"}",
+            isFavorite = false,
+            createdAt = System.currentTimeMillis() - 7200_000
+          ),
+          KaraokeAssetEntity(
+            guid = sampleGuid3,
+            songTitle = "Como Nossos Pais",
+            originalTitle = "Elis Regina - Como Nossos Pais (Acústico Karaokê)",
+            channelOrArtist = "Elis Regina",
+            genre = "MPB",
+            singers = "Elis Regina",
+            composers = "Belchior",
+            album = "Falso Brilhante",
+            workTitle = "Como Nossos Pais",
+            recordingDate = "1976",
+            compositionDate = "1976",
+            classicalEra = null,
+            classicalWorkType = null,
+            assetDirPath = "/storage/emulated/0/Download/$basePath/$sampleGuid3",
+            audioPath = "/storage/emulated/0/Download/$basePath/$sampleGuid3/audio.m4a",
+            previewVideoPath = "/storage/emulated/0/Download/$basePath/$sampleGuid3/preview.m4v",
+            fftDataPath = "/storage/emulated/0/Download/$basePath/$sampleGuid3/fft.json",
+            subtitlesDirPath = "/storage/emulated/0/Download/$basePath/$sampleGuid3/subtitles",
+            metadataJsonPath = "/storage/emulated/0/Download/$basePath/$sampleGuid3/metadata.json",
+            thumbnailUrl = "https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=600&auto=format&fit=crop&q=80",
+            durationSeconds = 265L,
+            audioFormat = "m4a",
+            videoFormat = "m4v",
+            videoResolution = "1080p Full HD",
+            audioBitrate = "320 kbps",
+            metadataJson = "{\"song_title\":\"Como Nossos Pais\",\"genre\":\"MPB\",\"album\":\"Falso Brilhante\"}",
+            isFavorite = true,
+            createdAt = System.currentTimeMillis() - 14400_000
+          ),
+          KaraokeAssetEntity(
+            guid = sampleGuid4,
+            songTitle = "As Quatro Estações: A Primavera",
+            originalTitle = "Antonio Vivaldi - Le quattro stagioni (Concerto Op. 8)",
+            channelOrArtist = "Orquestra Barroca",
+            genre = "Música Clássica",
+            singers = "",
+            composers = "Antonio Vivaldi",
+            album = null,
+            workTitle = "As Quatro Estações (Le quattro stagioni)",
+            recordingDate = null,
+            compositionDate = "1723",
+            classicalEra = "Barroca",
+            classicalWorkType = "Concerto",
+            assetDirPath = "/storage/emulated/0/Download/$basePath/$sampleGuid4",
+            audioPath = "/storage/emulated/0/Download/$basePath/$sampleGuid4/audio.m4a",
+            previewVideoPath = "/storage/emulated/0/Download/$basePath/$sampleGuid4/preview.m4v",
+            fftDataPath = "/storage/emulated/0/Download/$basePath/$sampleGuid4/fft.json",
+            subtitlesDirPath = "/storage/emulated/0/Download/$basePath/$sampleGuid4/subtitles",
+            metadataJsonPath = "/storage/emulated/0/Download/$basePath/$sampleGuid4/metadata.json",
+            thumbnailUrl = "https://images.unsplash.com/photo-1507838153414-b4b713384a76?w=600&auto=format&fit=crop&q=80",
+            durationSeconds = 205L,
+            audioFormat = "m4a",
+            videoFormat = "m4v",
+            videoResolution = "1080p Full HD",
+            audioBitrate = "320 kbps",
+            metadataJson = "{\"song_title\":\"As Quatro Estações\",\"genre\":\"Música Clássica\",\"classical_era\":\"Barroca\",\"work_type\":\"Concerto\"}",
+            isFavorite = false,
+            createdAt = System.currentTimeMillis() - 86400_000
+          )
+        )
+        app.database.karaokeAssetDao().insertAll(initialAssets)
+      }
+    }
+  }
 
   private fun generateGuid(): String {
     return UUID.randomUUID().toString().replace("-", "").lowercase()

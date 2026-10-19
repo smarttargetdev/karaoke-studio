@@ -28,6 +28,7 @@ import br.com.smarttarget.karaoke.studio.ui.MainViewModel
 fun MainScreen(viewModel: MainViewModel) {
   val currentTab by viewModel.currentTab.collectAsState()
   val activeDownloadsCount by viewModel.activeDownloadsCount.collectAsState()
+  val libraryCount by viewModel.libraryTotalCount.collectAsState()
 
   Scaffold(
     contentWindowInsets = WindowInsets(0.dp),
@@ -37,6 +38,35 @@ fun MainScreen(viewModel: MainViewModel) {
         tonalElevation = 6.dp,
         modifier = Modifier.testTag("main_navigation_bar")
       ) {
+        // Tab 1: Library
+        NavigationBarItem(
+          selected = currentTab == "library",
+          onClick = { viewModel.setTab("library") },
+          icon = {
+            BadgedBox(
+              badge = {
+                if (libraryCount > 0) {
+                  Badge { Text("$libraryCount") }
+                }
+              }
+            ) {
+              Icon(
+                painter = painterResource(id = R.drawable.ic_library),
+                contentDescription = "Biblioteca",
+                tint = if (currentTab == "library") MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+              )
+            }
+          },
+          label = {
+            Text(
+              text = "Biblioteca",
+              fontWeight = if (currentTab == "library") FontWeight.Bold else FontWeight.Normal
+            )
+          },
+          modifier = Modifier.testTag("nav_tab_library")
+        )
+
+        // Tab 2: Search URL
         NavigationBarItem(
           selected = currentTab == "search",
           onClick = { viewModel.setTab("search") },
@@ -49,13 +79,14 @@ fun MainScreen(viewModel: MainViewModel) {
           },
           label = {
             Text(
-              text = "Buscar URL",
+              text = "Buscar",
               fontWeight = if (currentTab == "search") FontWeight.Bold else FontWeight.Normal
             )
           },
           modifier = Modifier.testTag("nav_tab_search")
         )
 
+        // Tab 3: Browser
         NavigationBarItem(
           selected = currentTab == "browser",
           onClick = { viewModel.setTab("browser") },
@@ -75,6 +106,7 @@ fun MainScreen(viewModel: MainViewModel) {
           modifier = Modifier.testTag("nav_tab_browser")
         )
 
+        // Tab 4: Downloads
         NavigationBarItem(
           selected = currentTab == "queue",
           onClick = { viewModel.setTab("queue") },
@@ -95,13 +127,14 @@ fun MainScreen(viewModel: MainViewModel) {
           },
           label = {
             Text(
-              text = "Downloads",
+              text = "Fila",
               fontWeight = if (currentTab == "queue") FontWeight.Bold else FontWeight.Normal
             )
           },
           modifier = Modifier.testTag("nav_tab_queue")
         )
 
+        // Tab 5: Settings
         NavigationBarItem(
           selected = currentTab == "settings",
           onClick = { viewModel.setTab("settings") },
@@ -130,6 +163,7 @@ fun MainScreen(viewModel: MainViewModel) {
     ) {
       Crossfade(targetState = currentTab, label = "tab_crossfade") { tab ->
         when (tab) {
+          "library" -> LibraryScreen(viewModel = viewModel)
           "search" -> SearchScreen(viewModel = viewModel)
           "browser" -> YouTubeBrowserScreen(viewModel = viewModel)
           "queue" -> DownloadQueueScreen(viewModel = viewModel)

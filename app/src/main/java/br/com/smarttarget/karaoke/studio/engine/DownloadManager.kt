@@ -4,6 +4,8 @@ import android.content.Context
 import android.os.Environment
 import br.com.smarttarget.karaoke.studio.data.local.DownloadDao
 import br.com.smarttarget.karaoke.studio.data.local.DownloadEntity
+import br.com.smarttarget.karaoke.studio.data.local.KaraokeAssetDao
+import br.com.smarttarget.karaoke.studio.data.local.KaraokeAssetEntity
 import br.com.smarttarget.karaoke.studio.data.local.UserPreferencesRepository
 import br.com.smarttarget.karaoke.studio.data.model.DownloadItem
 import br.com.smarttarget.karaoke.studio.data.model.DownloadStatus
@@ -27,6 +29,7 @@ import kotlin.math.sin
 class DownloadManager(
   private val context: Context,
   private val downloadDao: DownloadDao,
+  private val karaokeAssetDao: KaraokeAssetDao,
   private val preferencesRepo: UserPreferencesRepository
 ) {
   private val scope = CoroutineScope(Dispatchers.IO + Job())
@@ -92,6 +95,7 @@ class DownloadManager(
         } catch (_: Exception) {}
       }
       downloadDao.deleteById(id)
+      karaokeAssetDao.deleteByGuid(id)
     }
   }
 
@@ -297,6 +301,64 @@ class DownloadManager(
           songTitle = songTitle,
           completedAt = System.currentTimeMillis()
         )
+
+        // 9. Persist into Karaoke Library database for instant search and viewing
+        val musicalObj = metadataObj.optJSONObject("musical_metadata")
+        val parsedGenre = musicalObj?.optString("genre") ?: "Sertanejo"
+        val parsedAlbum = musicalObj?.optString("album")?.takeIf { it.isNotEmpty() }
+        val parsedWork = musicalObj?.optString("work_title")?.takeIf { it.isNotEmpty() }
+        val parsedRecDate = musicalObj?.optString("recording_date")?.takeIf { it.isNotEmpty() }
+        val parsedCompDate = musicalObj?.optString("composition_date")?.takeIf { it.isNotEmpty() }
+        val parsedEra = musicalObj?.optString("classical_era")?.takeIf { it.isNotEmpty() }
+        val parsedType = musicalObj?.optString("work_type")?.takeIf { it.isNotEmpty() }
+
+        var singersList = ""
+        var composersList = ""
+        val pArray = musicalObj?.optJSONArray("persons")
+        if (pArray != null) {
+          val s = mutableListOf<String>()
+          val c = mutableListOf<String>()
+          for (i in 0 until pArray.length()) {
+            val p = pArray.getJSONObject(i)
+            val name = p.optString("name")
+            val role = p.optString("role")
+            if (role == "CANTOR") s.add(name) else c.add(name)
+          }
+          singersList = s.joinToString(", ")
+          composersList = c.joinToString(", ")
+        }
+
+        val libraryAsset = KaraokeAssetEntity(
+          guid = guid,
+          songTitle = songTitle,
+          originalTitle = item.title,
+          channelOrArtist = item.channelTitle,
+          genre = parsedGenre,
+          singers = singersList,
+          composers = composersList,
+          album = parsedAlbum,
+          workTitle = parsedWork,
+          recordingDate = parsedRecDate,
+          compositionDate = parsedCompDate,
+          classicalEra = parsedEra,
+          classicalWorkType = parsedType,
+          assetDirPath = assetDir.absolutePath,
+          audioPath = audioFile.absolutePath,
+          previewVideoPath = previewVideoFile.absolutePath,
+          fftDataPath = fftFile.absolutePath,
+          subtitlesDirPath = subtitlesDir.absolutePath,
+          metadataJsonPath = metadataFile.absolutePath,
+          thumbnailUrl = item.thumbnailUrl,
+          durationSeconds = item.durationSeconds,
+          audioFormat = audioContainer,
+          videoFormat = videoContainer,
+          videoResolution = videoRes,
+          audioBitrate = audioBitrate,
+          metadataJson = item.metadataJson,
+          isFavorite = false,
+          createdAt = System.currentTimeMillis()
+        )
+        karaokeAssetDao.insert(libraryAsset)
 
       } catch (e: CancellationException) {
         // Paused or cancelled

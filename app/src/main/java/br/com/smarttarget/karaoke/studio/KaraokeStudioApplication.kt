@@ -2,6 +2,7 @@ package br.com.smarttarget.karaoke.studio
 
 import android.app.Application
 import br.com.smarttarget.karaoke.studio.data.local.AppDatabase
+import br.com.smarttarget.karaoke.studio.data.local.KaraokeLibraryRepository
 import br.com.smarttarget.karaoke.studio.data.local.UserPreferencesRepository
 import br.com.smarttarget.karaoke.studio.engine.DownloadManager
 import br.com.smarttarget.karaoke.studio.engine.YtDlpExtractorEngine
@@ -12,6 +13,9 @@ class KaraokeStudioApplication : Application() {
     private set
 
   lateinit var preferencesRepo: UserPreferencesRepository
+    private set
+
+  lateinit var libraryRepo: KaraokeLibraryRepository
     private set
 
   lateinit var downloadManager: DownloadManager
@@ -25,7 +29,8 @@ class KaraokeStudioApplication : Application() {
     instance = this
     database = AppDatabase.getDatabase(this)
     preferencesRepo = UserPreferencesRepository(this)
-    downloadManager = DownloadManager(this, database.downloadDao(), preferencesRepo)
+    libraryRepo = KaraokeLibraryRepository(database.karaokeAssetDao())
+    downloadManager = DownloadManager(this, database.downloadDao(), database.karaokeAssetDao(), preferencesRepo)
     ytDlpEngine = YtDlpExtractorEngine(this)
   }
 
