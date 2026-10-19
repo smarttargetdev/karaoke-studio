@@ -22,6 +22,6 @@ dependencyResolutionManagement {
   }
 }
 
-rootProject.name = "Karaoke Studio"
+rootProject.name = "Karaoke"
 
-include(":app")
+include(":studio")
