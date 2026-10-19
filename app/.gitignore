@@ -1,1 +1,2 @@
-# Todos os arquivos, intermediários e saídas de compilação estão incluídos no git conforme solicitado.
+# Build directory for app module
+/build

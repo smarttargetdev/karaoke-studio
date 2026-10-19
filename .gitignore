@@ -1,1 +1,62 @@
-# Todos os arquivos, intermediários e saídas de compilação incluídos no git.
+# ==========================================
+# Gradle & Build Artifacts
+# ==========================================
+# Caches e daemons voláteis do Gradle (não versionar)
+.gradle/
+
+# Diretórios de build raiz e sub-módulos
+build/
+/*/build/
+.build-outputs/
+
+# Nota: Se você desejar versionar especificamente os APKs finais gerados,
+# mantenha as duas linhas abaixo descomentadas:
+# !app/build/outputs/apk/
+# !app/build/outputs/apk/**/*.apk
+
+# ==========================================
+# Local Configuration & Secrets
+# ==========================================
+# Propriedades locais do SDK (geradas por máquina/ambiente)
+local.properties
+
+# Variáveis de ambiente e segredos sensíveis
+.env
+.env.local
+.env.*.local
+
+# Chaves de assinatura privadas de release
+*.jks
+*.keystore
+!debug.keystore
+
+# ==========================================
+# IDE & Ferramentas de Desenvolvimento
+# ==========================================
+# Android Studio / IntelliJ IDEA
+.idea/
+*.iml
+.shelf/
+
+# Visual Studio Code
+.vscode/
+
+# ==========================================
+# Logs, Profiling e Dump de Memória
+# ==========================================
+*.log
+*.hprof
+captures/
+
+# ==========================================
+# Sistema Operacional
+# ==========================================
+.DS_Store
+Thumbs.db
+ehthumbs.db
+
+# ==========================================
+# NDK / C++ / CMake
+# ==========================================
+.cxx/
+.externalNativeBuild/
