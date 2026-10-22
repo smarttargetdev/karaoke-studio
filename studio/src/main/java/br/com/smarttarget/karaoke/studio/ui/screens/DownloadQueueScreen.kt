@@ -101,7 +101,7 @@ fun DownloadQueueScreen(viewModel: MainViewModel) {
       ) {
         Column {
           Text(
-            text = "Fila de Downloads yt-dlp",
+            text = "Fila",
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.Bold
           )
@@ -223,7 +223,7 @@ fun DownloadQueueScreen(viewModel: MainViewModel) {
               modifier = Modifier.size(18.dp)
             )
             Spacer(modifier = Modifier.width(8.dp))
-            Text("Ir para o YouTube")
+            Text("YouTube")
           }
         }
       }

@@ -75,7 +75,7 @@ fun LibraryScreen(viewModel: MainViewModel) {
   var assetToDelete by remember { mutableStateOf<KaraokeAssetEntity?>(null) }
   val clipboardManager = LocalClipboardManager.current
 
-  val genres = listOf("ALL", "Sertanejo", "MPB", "Rock", "Música Clássica", "Pop", "Samba", "Gospel", "Forró")
+  val genres = listOf("ALL", "Sertanejo", "MPB", "Rock", "Clássica", "Pop", "Samba", "Gospel", "Forró")
 
   Column(
     modifier = Modifier
@@ -90,7 +90,7 @@ fun LibraryScreen(viewModel: MainViewModel) {
     ) {
       Column {
         Text(
-          text = "Biblioteca de Karaokê",
+          text = "Biblioteca",
           style = MaterialTheme.typography.titleLarge,
           fontWeight = FontWeight.Bold
         )
@@ -189,7 +189,7 @@ fun LibraryScreen(viewModel: MainViewModel) {
       )
 
       genres.forEach { g ->
-        val label = if (g == "ALL") "Todos os Gêneros" else g
+        val label = if (g == "ALL") "Todos" else g
         FilterChip(
           selected = selectedGenre == g,
           onClick = { viewModel.setLibrarySelectedGenre(g) },
@@ -275,12 +275,12 @@ fun LibraryScreen(viewModel: MainViewModel) {
             shape = RoundedCornerShape(12.dp)
           ) {
             Icon(
-              painter = painterResource(id = R.drawable.ic_search),
+              painter = painterResource(id = R.drawable.ic_download),
               contentDescription = null,
               modifier = Modifier.size(18.dp)
             )
             Spacer(modifier = Modifier.width(8.dp))
-            Text("Buscar / Criar Novo Asset")
+            Text("Baixar")
           }
         }
       }

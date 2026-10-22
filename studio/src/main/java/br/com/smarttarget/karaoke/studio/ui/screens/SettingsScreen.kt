@@ -109,7 +109,7 @@ fun SettingsScreen(viewModel: MainViewModel) {
       .verticalScroll(rememberScrollState())
   ) {
     Text(
-      text = "Configurações do Karaoke Studio",
+      text = "Configurações",
       style = MaterialTheme.typography.titleLarge,
       fontWeight = FontWeight.Bold
     )
@@ -146,7 +146,7 @@ fun SettingsScreen(viewModel: MainViewModel) {
             Spacer(modifier = Modifier.width(8.dp))
             Column {
               Text(
-                text = "Pasta Base de Assets (Documentos)",
+                text = "Pasta da Biblioteca",
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold
               )
@@ -306,7 +306,7 @@ fun SettingsScreen(viewModel: MainViewModel) {
           )
           Spacer(modifier = Modifier.width(8.dp))
           Text(
-            text = "Características Padrão de Vídeo",
+            text = "Padrão de Vídeo",
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.Bold
           )
@@ -420,7 +420,7 @@ fun SettingsScreen(viewModel: MainViewModel) {
           )
           Spacer(modifier = Modifier.width(8.dp))
           Text(
-            text = "Características Padrão de Áudio",
+            text = "Padrão de Áudio",
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.Bold
           )
@@ -644,7 +644,7 @@ fun SettingsScreen(viewModel: MainViewModel) {
             )
             Spacer(modifier = Modifier.width(8.dp))
             Text(
-              text = "Console yt-dlp & Log do Processamento",
+              text = "Console e Log",
               style = MaterialTheme.typography.titleMedium,
               fontWeight = FontWeight.Bold
             )

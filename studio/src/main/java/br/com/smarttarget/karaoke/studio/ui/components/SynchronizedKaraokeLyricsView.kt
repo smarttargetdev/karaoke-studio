@@ -1,13 +1,17 @@
 package br.com.smarttarget.karaoke.studio.ui.components
 
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -20,7 +24,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
@@ -32,14 +35,22 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.clipRect
+import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontFamily
@@ -49,6 +60,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import br.com.smarttarget.karaoke.studio.R
 import br.com.smarttarget.karaoke.studio.engine.KaraokeLine
+import br.com.smarttarget.karaoke.studio.engine.KaraokeSyllable
 import br.com.smarttarget.karaoke.studio.engine.KaraokeSynchronizationManager
 import br.com.smarttarget.karaoke.studio.engine.KaraokeWord
 import kotlinx.coroutines.Dispatchers
@@ -56,8 +68,8 @@ import kotlinx.coroutines.withContext
 import java.io.File
 
 /**
- * Componente Compose de Letras Sincronizadas estilo Karaokê Profissional com
- * preenchimento dinâmico de cor palavra por palavra em tempo real.
+ * Componente Compose de Letras Sincronizadas estilo Karaokê com animação contínua
+ * de preenchimento de cor (Color Wipe) por sílaba em tempo real.
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -81,7 +93,6 @@ fun SynchronizedKaraokeLyricsView(
         if (srtFile.exists()) {
           content = srtFile.readText()
         } else {
-          // Tenta arquivo direto
           val direct = File(subtitlesDirPath)
           if (direct.exists()) content = direct.readText()
         }
@@ -152,7 +163,7 @@ Artista: $artist [Karaoke Studio]
           )
           Spacer(modifier = Modifier.width(6.dp))
           Text(
-            text = "Letra Sincronizada em Tempo Real",
+            text = "Letra Sincronizada (Color Wipe Silábico)",
             style = MaterialTheme.typography.titleSmall,
             fontWeight = FontWeight.Bold,
             color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -187,7 +198,7 @@ Artista: $artist [Karaoke Studio]
 
       Spacer(modifier = Modifier.height(10.dp))
 
-      // 2. Caixa de Letra Ativa estilo Teleprompter Karaokê
+      // 2. Caixa de Letra Ativa estilo Teleprompter Karaokê Profissional
       Box(
         modifier = Modifier
           .fillMaxWidth()
@@ -204,7 +215,7 @@ Artista: $artist [Karaoke Studio]
           if (syncState.activeLine != null) {
             val activeLine = syncState.activeLine!!
 
-            // Barra de progresso da frase atual
+            // Barra de progresso da frase atual com gradiente de wipe
             LinearProgressIndicator(
               progress = { syncState.lineProgressRatio },
               modifier = Modifier
@@ -215,31 +226,27 @@ Artista: $artist [Karaoke Studio]
               trackColor = Color(0xFF222638)
             )
 
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(14.dp))
 
-            // Frase ativa com destaque palavra a palavra
+            // Linha Ativa com preenchimento contínuo de cor (syllable color wipe)
             FlowRow(
               horizontalArrangement = Arrangement.Center,
+              verticalArrangement = Arrangement.Center,
               modifier = Modifier.fillMaxWidth()
             ) {
-              activeLine.words.forEachIndexed { idx, word ->
-                val isSung = currentPositionMs >= word.endMs
-                val isCurrent = currentPositionMs in word.startMs..word.endMs
-
-                val wordColor = when {
-                  isCurrent -> Color(0xFFFFD600) // Dourado brilhante em execução
-                  isSung -> Color(0xFFFFF176)    // Amarelo suave já cantado
-                  else -> Color(0xFFB0BEC5)      // Prata/Cinza aguardando
+              activeLine.words.forEach { word ->
+                Row(
+                  verticalAlignment = Alignment.CenterVertically,
+                  modifier = Modifier.padding(horizontal = 3.dp, vertical = 2.dp)
+                ) {
+                  word.syllables.forEach { syllable ->
+                    KaraokeSyllableItem(
+                      syllable = syllable,
+                      currentPositionMs = currentPositionMs
+                    )
+                  }
+                  Spacer(modifier = Modifier.width(4.dp))
                 }
-
-                Text(
-                  text = "${word.text} ",
-                  fontSize = 17.sp,
-                  fontWeight = if (isCurrent) FontWeight.ExtraBold else FontWeight.SemiBold,
-                  color = wordColor,
-                  modifier = Modifier
-                    .padding(vertical = 2.dp)
-                )
               }
             }
           } else {
@@ -265,7 +272,7 @@ Artista: $artist [Karaoke Studio]
 
           // Prévia da Próxima Linha
           if (syncState.nextLine != null && syncState.activeLine != null) {
-            Spacer(modifier = Modifier.height(10.dp))
+            Spacer(modifier = Modifier.height(12.dp))
             Text(
               text = "A seguir: ${syncState.nextLine?.fullText}",
               fontSize = 11.sp,
@@ -274,6 +281,103 @@ Artista: $artist [Karaoke Studio]
               textAlign = TextAlign.Center
             )
           }
+        }
+      }
+    }
+  }
+}
+
+/**
+ * Renderizador de Sílaba com animação suave de preenchimento horizontal de cor (Wipe).
+ */
+@Composable
+private fun KaraokeSyllableItem(
+  syllable: KaraokeSyllable,
+  currentPositionMs: Long
+) {
+  val isFinished = currentPositionMs >= syllable.endMs
+  val isUpcoming = currentPositionMs < syllable.startMs
+
+  // Fração exata de preenchimento da sílaba
+  val rawProgress = when {
+    isFinished -> 1.0f
+    isUpcoming -> 0.0f
+    else -> ((currentPositionMs - syllable.startMs).toFloat() / syllable.durationMs.toFloat()).coerceIn(0f, 1f)
+  }
+
+  // Animação suave para evitar qualquer saltinho entre sílabas
+  val animatedProgress = remember { Animatable(rawProgress) }
+  LaunchedEffect(rawProgress) {
+    if (rawProgress == 1.0f || rawProgress == 0.0f) {
+      animatedProgress.snapTo(rawProgress)
+    } else {
+      animatedProgress.animateTo(
+        targetValue = rawProgress,
+        animationSpec = tween(durationMillis = 45, easing = LinearEasing)
+      )
+    }
+  }
+
+  val density = LocalDensity.current
+  val fontSizeSp = 18.sp
+  val fontSizePx = with(density) { fontSizeSp.toPx() }
+
+  Box(
+    contentAlignment = Alignment.CenterStart,
+    modifier = Modifier.height(28.dp)
+  ) {
+    // 1. Camada Base (Texto ainda não cantado em prata/cinza com leve sombra)
+    Text(
+      text = syllable.text,
+      fontSize = fontSizeSp,
+      fontWeight = FontWeight.Bold,
+      color = Color(0xFFB0BEC5),
+      fontFamily = FontFamily.Default
+    )
+
+    // 2. Camada de Sobreposição Preenchida (Dourado Brilhante) com recorte horizontal suave
+    if (animatedProgress.value > 0.0f) {
+      Canvas(
+        modifier = Modifier
+          .matchParentSize()
+      ) {
+        val w = size.width
+        val h = size.height
+        val fillWidth = w * animatedProgress.value
+
+        clipRect(left = 0f, top = 0f, right = fillWidth, bottom = h) {
+          val paint = android.graphics.Paint().apply {
+            textSize = fontSizePx
+            color = android.graphics.Color.parseColor("#FFD600")
+            isAntiAlias = true
+            isFakeBoldText = true
+            // Efeito de brilho de palco no karaokê
+            setShadowLayer(8f, 0f, 0f, android.graphics.Color.parseColor("#FFAB00"))
+          }
+
+          // Centralização vertical consistente
+          val fontMetrics = paint.fontMetrics
+          val baseline = (h / 2f) - ((fontMetrics.ascent + fontMetrics.descent) / 2f)
+
+          drawContext.canvas.nativeCanvas.drawText(
+            syllable.text,
+            0f,
+            baseline,
+            paint
+          )
+        }
+
+        // Ponto luminoso de destaque no cursor da sílaba ativa
+        if (animatedProgress.value in 0.05f..0.98f) {
+          drawCircle(
+            brush = Brush.radialGradient(
+              colors = listOf(Color(0xFFFFF59D), Color.Transparent),
+              center = Offset(fillWidth, h * 0.2f),
+              radius = 8f
+            ),
+            center = Offset(fillWidth, h * 0.2f),
+            radius = 8f
+          )
         }
       }
     }

@@ -123,7 +123,7 @@ fun SearchScreen(viewModel: MainViewModel) {
   ) {
     // Header
     Text(
-      text = "Processar Vídeo / Criar Asset",
+      text = "Baixar",
       style = MaterialTheme.typography.titleLarge,
       fontWeight = FontWeight.Bold
     )
@@ -275,7 +275,7 @@ fun SearchScreen(viewModel: MainViewModel) {
             )
             Spacer(modifier = Modifier.width(8.dp))
             Text(
-              text = "Fetch / Processar Vídeo",
+              text = "Processar",
               fontWeight = FontWeight.Bold,
               fontSize = 15.sp
             )
@@ -305,7 +305,7 @@ fun SearchScreen(viewModel: MainViewModel) {
           )
           Spacer(modifier = Modifier.width(8.dp))
           Text(
-            text = "Selecionar Vídeo Local do Dispositivo",
+            text = "Enviar",
             fontSize = 13.sp,
             fontWeight = FontWeight.SemiBold
           )

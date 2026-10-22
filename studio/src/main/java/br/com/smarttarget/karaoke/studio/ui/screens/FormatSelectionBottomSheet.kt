@@ -86,13 +86,13 @@ fun FormatSelectionBottomSheet(viewModel: MainViewModel) {
 
   val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
-  val popularGenres = listOf("Sertanejo", "Rock", "Pop", "MPB", "Música Clássica", "Samba", "Gospel", "Forró")
+  val popularGenres = listOf("Sertanejo", "Rock", "Pop", "MPB", "Clássica", "Samba", "Gospel", "Forró")
   val classicalEras = listOf("Barroca", "Clássica", "Romântica", "Moderna", "Contemporânea")
   val classicalTypes = listOf("Ópera", "Cantata", "Ballet", "Recital", "Concerto", "Sonata", "Sinfonia", "Prelúdio")
 
   val hasSingers = persons.any { it.role == PersonRole.CANTOR }
   val hasComposers = persons.any { it.role == PersonRole.COMPOSITOR }
-  val isClassical = genre.equals("Música Clássica", ignoreCase = true)
+  val isClassical = genre.equals("Clássica", ignoreCase = true) || genre.equals("Música Clássica", ignoreCase = true)
 
   if (showSheet && info != null) {
     val currentInfo = info!!
@@ -670,7 +670,7 @@ fun FormatSelectionBottomSheet(viewModel: MainViewModel) {
           )
           Spacer(modifier = Modifier.width(8.dp))
           Text(
-            text = "Extrair & Criar Asset (GUID)",
+            text = "Baixar",
             fontWeight = FontWeight.Bold,
             fontSize = 15.sp
           )

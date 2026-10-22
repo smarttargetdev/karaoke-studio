@@ -7,7 +7,30 @@ import java.io.File
 import kotlin.math.max
 
 /**
- * Modelo de linha de legenda com decomposição em palavras/sílabas para sincronismo de Karaokê.
+ * Sílaba de uma palavra com marcação temporal precisa para preenchimento de cor estilo karaokê.
+ */
+data class KaraokeSyllable(
+  val text: String,
+  val startMs: Long,
+  val endMs: Long
+) {
+  val durationMs: Long get() = max(1L, endMs - startMs)
+}
+
+/**
+ * Modelo de palavra com decomposição silábica para animação de wipe contínuo.
+ */
+data class KaraokeWord(
+  val text: String,
+  val startMs: Long,
+  val endMs: Long,
+  val syllables: List<KaraokeSyllable> = emptyList()
+) {
+  val durationMs: Long get() = max(1L, endMs - startMs)
+}
+
+/**
+ * Linha de estrofe de karaokê.
  */
 data class KaraokeLine(
   val id: Int,
@@ -18,12 +41,6 @@ data class KaraokeLine(
 ) {
   val durationMs: Long get() = max(1L, endMs - startMs)
 }
-
-data class KaraokeWord(
-  val text: String,
-  val startMs: Long,
-  val endMs: Long
-)
 
 data class KaraokeSyncState(
   val currentPositionMs: Long = 0L,
@@ -36,7 +53,7 @@ data class KaraokeSyncState(
 )
 
 /**
- * Gerenciador de sincronização em tempo real para legendas de karaokê.
+ * Gerenciador de sincronização em tempo real para legendas de karaokê com decomposição silábica.
  */
 class KaraokeSynchronizationManager {
 
@@ -47,7 +64,7 @@ class KaraokeSynchronizationManager {
   val syncState: StateFlow<KaraokeSyncState> = _syncState.asStateFlow()
 
   /**
-   * Carrega e decompõe o arquivo SRT em linhas e palavras com marcação temporal.
+   * Carrega e decompõe o arquivo SRT em linhas, palavras e sílabas.
    */
   fun loadSubtitles(srtContent: String) {
     _lines.clear()
@@ -123,9 +140,51 @@ class KaraokeSynchronizationManager {
     for (i in tokens.indices) {
       val wStart = startMs + (i * wordDuration)
       val wEnd = if (i == tokens.lastIndex) endMs else wStart + wordDuration
-      result.add(KaraokeWord(tokens[i], wStart, wEnd))
+      val syllables = splitWordIntoSyllables(tokens[i], wStart, wEnd)
+      result.add(KaraokeWord(tokens[i], wStart, wEnd, syllables))
     }
     return result
+  }
+
+  /**
+   * Divide uma palavra em sílabas fonéticas para transição de cor fluida.
+   */
+  private fun splitWordIntoSyllables(word: String, startMs: Long, endMs: Long): List<KaraokeSyllable> {
+    val clean = word.trim()
+    if (clean.length <= 3) {
+      return listOf(KaraokeSyllable(clean, startMs, endMs))
+    }
+
+    // Regras heurísticas simples de separação de sílabas por vogais
+    val vowels = setOf('a', 'e', 'i', 'o', 'u', 'á', 'é', 'í', 'ó', 'ú', 'â', 'ê', 'ô', 'ã', 'õ')
+    val parts = mutableListOf<String>()
+    var currentChunk = StringBuilder()
+
+    for (ch in clean) {
+      currentChunk.append(ch)
+      if (vowels.contains(ch.lowercaseChar()) && currentChunk.length >= 2) {
+        parts.add(currentChunk.toString())
+        currentChunk = StringBuilder()
+      }
+    }
+    if (currentChunk.isNotEmpty()) {
+      if (parts.isNotEmpty()) {
+        parts[parts.lastIndex] = parts.last() + currentChunk.toString()
+      } else {
+        parts.add(currentChunk.toString())
+      }
+    }
+
+    val totalDuration = endMs - startMs
+    val step = totalDuration / parts.size
+    val syllables = mutableListOf<KaraokeSyllable>()
+
+    for (i in parts.indices) {
+      val sStart = startMs + (i * step)
+      val sEnd = if (i == parts.lastIndex) endMs else sStart + step
+      syllables.add(KaraokeSyllable(parts[i], sStart, sEnd))
+    }
+    return syllables
   }
 
   private fun parseTimestamp(ts: String): Long {

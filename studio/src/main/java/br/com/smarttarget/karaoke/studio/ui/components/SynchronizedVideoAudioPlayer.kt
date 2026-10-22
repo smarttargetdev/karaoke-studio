@@ -705,10 +705,16 @@ fun SynchronizedVideoAudioPlayer(
         label = "Todos os Módulos"
       )
       PlayerTabButton(
-        selected = selectedTab == "FFT",
-        onClick = { selectedTab = "FFT" },
-        iconRes = R.drawable.ic_spectrum,
-        label = "FFT Acústico"
+        selected = selectedTab == "WAVEFORM",
+        onClick = { selectedTab = "WAVEFORM" },
+        iconRes = R.drawable.ic_waveform,
+        label = "Forma de Onda"
+      )
+      PlayerTabButton(
+        selected = selectedTab == "LYRICS",
+        onClick = { selectedTab = "LYRICS" },
+        iconRes = R.drawable.ic_lyrics,
+        label = "Letra Karaokê"
       )
       PlayerTabButton(
         selected = selectedTab == "PITCH",
@@ -717,14 +723,28 @@ fun SynchronizedVideoAudioPlayer(
         label = "Afinador de Pitch"
       )
       PlayerTabButton(
-        selected = selectedTab == "LYRICS",
-        onClick = { selectedTab = "LYRICS" },
-        iconRes = R.drawable.ic_lyrics,
-        label = "Letra Karaokê"
+        selected = selectedTab == "FFT",
+        onClick = { selectedTab = "FFT" },
+        iconRes = R.drawable.ic_spectrum,
+        label = "FFT Acústico"
       )
     }
 
     Spacer(modifier = Modifier.height(12.dp))
+
+    // Módulo de Forma de Onda (Waveform) do Áudio Extraído
+    if (selectedTab == "ALL" || selectedTab == "WAVEFORM") {
+      AudioWaveformVisualizer(
+        audioPath = audioPath,
+        fftFilePath = fftDataPath,
+        currentPositionMs = currentPositionMs,
+        totalDurationMs = totalDurationMs,
+        isPlaying = isPlaying,
+        onSeek = { performSeek(it) },
+        modifier = Modifier.fillMaxWidth()
+      )
+      Spacer(modifier = Modifier.height(12.dp))
+    }
 
     // Frequência de referência vocal dinâmica sincronizada com o playback
     val referencePitchHz = remember(currentTimeSeconds) {

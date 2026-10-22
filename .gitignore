@@ -9,6 +9,8 @@
 build/
 /*/build/
 .build-outputs/
+artifacts/
+artefatos/
 
 # Nota: Se você desejar versionar especificamente os APKs finais gerados,
 # mantenha as duas linhas abaixo descomentadas:

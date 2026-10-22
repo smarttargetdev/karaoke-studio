@@ -89,7 +89,7 @@ fun YouTubeBrowserScreen(viewModel: MainViewModel) {
     "Karaokê Anos 80",
     "Playback Gospel",
     "Karaokê Pop Hits",
-    "Música Clássica",
+    "Clássica",
     "Karaokê MPB"
   )
 
@@ -191,6 +191,30 @@ fun YouTubeBrowserScreen(viewModel: MainViewModel) {
               tint = MaterialTheme.colorScheme.primary,
               modifier = Modifier.size(22.dp)
             )
+          }
+
+          // Top Bar Direct Download Button (Ativo quando um vídeo for definido)
+          val targetVideoUrl = detectedUrl ?: inputUrl.takeIf {
+            it.contains("watch?v=") || it.contains("youtu.be/") || it.contains("/shorts/")
+          }
+          if (targetVideoUrl != null) {
+            Spacer(modifier = Modifier.width(4.dp))
+            Button(
+              onClick = { viewModel.analyzeUrl(targetVideoUrl) },
+              enabled = !isAnalyzing,
+              shape = RoundedCornerShape(20.dp),
+              colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+              contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+              modifier = Modifier.height(36.dp).testTag("top_bar_download_button")
+            ) {
+              Icon(
+                painter = painterResource(id = R.drawable.ic_download),
+                contentDescription = "Baixar",
+                modifier = Modifier.size(16.dp)
+              )
+              Spacer(modifier = Modifier.width(4.dp))
+              Text("Baixar", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+            }
           }
         }
 
@@ -362,14 +386,15 @@ fun YouTubeBrowserScreen(viewModel: MainViewModel) {
                   Text("Processando yt-dlp & Gerando GUID...")
                 } else {
                   Icon(
-                    painter = painterResource(id = R.drawable.ic_terminal),
+                    painter = painterResource(id = R.drawable.ic_download),
                     contentDescription = null,
                     modifier = Modifier.size(20.dp)
                   )
                   Spacer(modifier = Modifier.width(8.dp))
                   Text(
-                    text = "Configurar & Processar Asset",
-                    fontWeight = FontWeight.Bold
+                    text = "Baixar",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 15.sp
                   )
                 }
               }
@@ -438,7 +463,7 @@ fun YouTubeBrowserScreen(viewModel: MainViewModel) {
             onClick = { viewModel.validateAndSubmitUrl(manualUrlInput) },
             shape = RoundedCornerShape(10.dp)
           ) {
-            Text("Validar e Processar")
+            Text("Baixar")
           }
         },
         dismissButton = {

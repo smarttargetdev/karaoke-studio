@@ -66,27 +66,27 @@ fun MainScreen(viewModel: MainViewModel) {
           modifier = Modifier.testTag("nav_tab_library")
         )
 
-        // Tab 2: Search URL
+        // Tab 2: Baixar URL
         NavigationBarItem(
           selected = currentTab == "search",
           onClick = { viewModel.setTab("search") },
           icon = {
             Icon(
-              painter = painterResource(id = R.drawable.ic_search),
-              contentDescription = "Buscar URL",
+              painter = painterResource(id = R.drawable.ic_download),
+              contentDescription = "Baixar",
               tint = if (currentTab == "search") MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
             )
           },
           label = {
             Text(
-              text = "Buscar",
+              text = "Baixar",
               fontWeight = if (currentTab == "search") FontWeight.Bold else FontWeight.Normal
             )
           },
           modifier = Modifier.testTag("nav_tab_search")
         )
 
-        // Tab 3: Browser
+        // Tab 3: YouTube
         NavigationBarItem(
           selected = currentTab == "browser",
           onClick = { viewModel.setTab("browser") },
@@ -99,7 +99,7 @@ fun MainScreen(viewModel: MainViewModel) {
           },
           label = {
             Text(
-              text = "Navegar",
+              text = "YouTube",
               fontWeight = if (currentTab == "browser") FontWeight.Bold else FontWeight.Normal
             )
           },
