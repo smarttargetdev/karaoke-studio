@@ -397,7 +397,7 @@ fun SearchScreen(viewModel: MainViewModel) {
         Spacer(modifier = Modifier.height(6.dp))
         Text("1. Validação da URL (apenas vídeos individuais, playlists rejeitadas)", fontSize = 11.sp)
         Text("2. Geração do identificador GUID único em minúsculas (sem hifens)", fontSize = 11.sp)
-        Text("3. Criação da pasta do asset em Downloads/$baseAssetsFolder/{guid}/", fontSize = 11.sp)
+        Text("3. Criação da pasta do asset em Documentos/$baseAssetsFolder/{guid}/", fontSize = 11.sp)
         Text("4. Extração do áudio (m4a padrão) salvo com o nome 'audio'", fontSize = 11.sp)
         Text("5. Extração do vídeo preview (m4v padrão) salvo com o nome 'preview'", fontSize = 11.sp)
         Text("6. Análise matemática FFT do áudio armazenada como 'fft.json'", fontSize = 11.sp)

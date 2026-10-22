@@ -265,7 +265,7 @@ fun FormatSelectionBottomSheet(viewModel: MainViewModel) {
           }
         )
         Text(
-          text = "Pasta no dispositivo: Downloads/$baseAssetsFolder/$guid/",
+          text = "Pasta no dispositivo: Documentos/$baseAssetsFolder/$guid/",
           fontSize = 10.sp,
           color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
           modifier = Modifier.padding(start = 4.dp, top = 2.dp)

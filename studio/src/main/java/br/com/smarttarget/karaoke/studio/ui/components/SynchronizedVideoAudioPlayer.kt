@@ -17,7 +17,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -69,6 +68,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
 import java.io.File
+import kotlin.math.abs
 import kotlin.math.max
 
 /**
@@ -83,6 +83,8 @@ data class SubtitleLine(
 
 /**
  * Componente principal sincronizado de Vídeo M4V/MP4, Áudio M4A/MP3 e Visualização Gráfica FFT.
+ * Reproduz o vídeo e o áudio simultaneamente através de arquitetura Master-Slave com
+ * sincronismo de relógio e correção contínua de desvio (drift).
  */
 @Composable
 fun SynchronizedVideoAudioPlayer(
@@ -106,8 +108,10 @@ fun SynchronizedVideoAudioPlayer(
   var isMuted by remember { mutableStateOf(false) }
   var volumeLevel by remember { mutableFloatStateOf(1.0f) }
   var isVideoHardwareActive by remember { mutableStateOf(false) }
+  var isAudioHardwareActive by remember { mutableStateOf(false) }
+  var avDriftMs by remember { mutableLongStateOf(0L) }
   var showSubtitles by remember { mutableStateOf(true) }
-  var selectedTab by remember { mutableStateOf("ALL") } // ALL, VIDEO, FFT, LYRICS
+  var selectedTab by remember { mutableStateOf("ALL") } // ALL, VIDEO, FFT, LYRICS, PITCH
 
   // Lista de legendas carregadas do arquivo pt-BR.srt
   val subtitleLines = remember { mutableStateListOf<SubtitleLine>() }
@@ -138,85 +142,136 @@ fun SynchronizedVideoAudioPlayer(
     }
   }
 
-  // Instância do MediaPlayer nativo para reprodução de vídeo/áudio
-  var mediaPlayer by remember { mutableStateOf<MediaPlayer?>(null) }
+  // Motores dedicados para Vídeo e Áudio com sincronismo de relógio mestre
+  var videoPlayer by remember { mutableStateOf<MediaPlayer?>(null) }
+  var audioPlayer by remember { mutableStateOf<MediaPlayer?>(null) }
   var activeSurface by remember { mutableStateOf<Surface?>(null) }
 
-  // Inicialização e gerenciamento do ciclo de vida do MediaPlayer
+  // Inicialização e gerenciamento do ciclo de vida dos MediaPlayers (Vídeo + Áudio)
   DisposableEffect(videoPath, audioPath) {
-    val player = MediaPlayer().apply {
+    // 1. Motor de Vídeo (renderiza na Surface da TextureView)
+    val vPlayer = MediaPlayer().apply {
       try {
-        val mediaFile = videoPath?.let { File(it) }?.takeIf { it.exists() && it.length() > 1024 }
-          ?: audioPath?.let { File(it) }?.takeIf { it.exists() && it.length() > 1024 }
-
-        if (mediaFile != null) {
-          setDataSource(context, Uri.fromFile(mediaFile))
+        val vFile = videoPath?.let { File(it) }?.takeIf { it.exists() && it.length() > 512 }
+        if (vFile != null) {
+          setDataSource(context, Uri.fromFile(vFile))
+          // Muta a faixa interna do vídeo caso ela exista para usar a faixa master dedicada de áudio
+          setVolume(0f, 0f)
           prepareAsync()
           setOnPreparedListener { mp ->
             isVideoHardwareActive = true
             mp.isLooping = true
+            activeSurface?.let { s -> mp.setSurface(s) }
             if (isPlaying) mp.start()
           }
           setOnErrorListener { _, _, _ ->
-            // Fallback suave para simulação de frame caso o arquivo seja header de teste
             isVideoHardwareActive = false
             true
           }
         }
-      } catch (e: Exception) {
+      } catch (_: Exception) {
         isVideoHardwareActive = false
       }
     }
-    mediaPlayer = player
+    videoPlayer = vPlayer
+
+    // 2. Motor de Áudio Master (reproduz a faixa de alta fidelidade M4A/MP3)
+    val aPlayer = MediaPlayer().apply {
+      try {
+        val aFile = audioPath?.let { File(it) }?.takeIf { it.exists() && it.length() > 512 }
+        if (aFile != null) {
+          setDataSource(context, Uri.fromFile(aFile))
+          val vol = if (isMuted) 0f else volumeLevel
+          setVolume(vol, vol)
+          prepareAsync()
+          setOnPreparedListener { mp ->
+            isAudioHardwareActive = true
+            mp.isLooping = true
+            if (isPlaying) mp.start()
+          }
+          setOnErrorListener { _, _, _ ->
+            isAudioHardwareActive = false
+            true
+          }
+        }
+      } catch (_: Exception) {
+        isAudioHardwareActive = false
+      }
+    }
+    audioPlayer = aPlayer
 
     onDispose {
       try {
-        player.stop()
-        player.release()
+        vPlayer.stop()
+        vPlayer.release()
       } catch (_: Exception) {}
-      mediaPlayer = null
+      try {
+        aPlayer.stop()
+        aPlayer.release()
+      } catch (_: Exception) {}
+      videoPlayer = null
+      audioPlayer = null
       activeSurface?.release()
       activeSurface = null
     }
   }
 
-  // Loop de Sincronização em Tempo Real (60fps / 50ms)
-  LaunchedEffect(isPlaying, isVideoHardwareActive) {
+  // Loop de Sincronização em Tempo Real com Correção Contínua de Desvio (Drift)
+  LaunchedEffect(isPlaying, isVideoHardwareActive, isAudioHardwareActive) {
     while (isActive && isPlaying) {
       delay(50)
-      if (isVideoHardwareActive && mediaPlayer != null) {
+
+      if (isAudioHardwareActive && audioPlayer != null) {
         try {
-          currentPositionMs = mediaPlayer!!.currentPosition.toLong()
+          val masterAudioPos = audioPlayer!!.currentPosition.toLong()
+          currentPositionMs = masterAudioPos
+
+          // Correção de sincronismo entre Áudio e Vídeo: se o vídeo desviar mais de 150ms, ressincroniza
+          if (isVideoHardwareActive && videoPlayer != null) {
+            val vPos = videoPlayer!!.currentPosition.toLong()
+            val drift = abs(vPos - masterAudioPos)
+            avDriftMs = drift
+            if (drift > 150L) {
+              videoPlayer!!.seekTo(masterAudioPos.toInt())
+            }
+          }
+        } catch (_: Exception) {}
+      } else if (isVideoHardwareActive && videoPlayer != null) {
+        try {
+          currentPositionMs = videoPlayer!!.currentPosition.toLong()
+          avDriftMs = 0L
         } catch (_: Exception) {}
       } else {
+        // Fallback para simulação em tempo real (emuladores sem codec de mídia proprietário)
         if (currentPositionMs < totalDurationMs) {
           currentPositionMs += 50
         } else {
           currentPositionMs = 0L // Loop
         }
+        avDriftMs = 0L
       }
     }
   }
 
-  // Controlar Play/Pause no MediaPlayer
+  // Controle de Play/Pause sincronizado em ambos os motores
   LaunchedEffect(isPlaying) {
-    mediaPlayer?.let { mp ->
-      try {
-        if (isPlaying) {
-          if (!mp.isPlaying) mp.start()
-        } else {
-          if (mp.isPlaying) mp.pause()
-        }
-      } catch (_: Exception) {}
-    }
+    try {
+      if (isPlaying) {
+        audioPlayer?.let { if (!it.isPlaying) it.start() }
+        videoPlayer?.let { if (!it.isPlaying) it.start() }
+      } else {
+        audioPlayer?.let { if (it.isPlaying) it.pause() }
+        videoPlayer?.let { if (it.isPlaying) it.pause() }
+      }
+    } catch (_: Exception) {}
   }
 
-  // Controlar Volume / Mute
+  // Controle de Volume / Mute sincronizado no motor de áudio master
   LaunchedEffect(isMuted, volumeLevel) {
-    mediaPlayer?.let { mp ->
+    audioPlayer?.let { ap ->
       try {
         val vol = if (isMuted) 0f else volumeLevel
-        mp.setVolume(vol, vol)
+        ap.setVolume(vol, vol)
       } catch (_: Exception) {}
     }
   }
@@ -227,6 +282,16 @@ fun SynchronizedVideoAudioPlayer(
   }
 
   val currentTimeSeconds = currentPositionMs / 1000f
+
+  // Função utilitária para Seek unificado em Áudio e Vídeo
+  fun performSeek(targetMs: Long) {
+    val clamped = targetMs.coerceIn(0L, totalDurationMs)
+    currentPositionMs = clamped
+    try {
+      audioPlayer?.seekTo(clamped.toInt())
+      videoPlayer?.seekTo(clamped.toInt())
+    } catch (_: Exception) {}
+  }
 
   Column(
     modifier = modifier
@@ -256,7 +321,7 @@ fun SynchronizedVideoAudioPlayer(
             overflow = TextOverflow.Ellipsis
           )
           Text(
-            text = "Vídeo M4V + Áudio M4A + FFT Sincronizado",
+            text = "Vídeo M4V + Áudio M4A (Sincronismo A/V Ativo)",
             fontSize = 11.sp,
             color = MaterialTheme.colorScheme.primary,
             fontWeight = FontWeight.Medium
@@ -265,7 +330,7 @@ fun SynchronizedVideoAudioPlayer(
       }
 
       Row(verticalAlignment = Alignment.CenterVertically) {
-        // Indicador de Status do Sincronizador
+        // Indicador de Sincronismo A/V em Tempo Real
         Surface(
           shape = RoundedCornerShape(6.dp),
           color = Color(0xFF1E2235),
@@ -283,7 +348,7 @@ fun SynchronizedVideoAudioPlayer(
             )
             Spacer(modifier = Modifier.width(4.dp))
             Text(
-              text = if (isPlaying) "SYNC ATIVO" else "PAUSADO",
+              text = if (isPlaying) "A/V SYNC: ${avDriftMs}ms" else "PAUSADO",
               fontSize = 9.sp,
               fontFamily = FontFamily.Monospace,
               fontWeight = FontWeight.Bold,
@@ -310,13 +375,13 @@ fun SynchronizedVideoAudioPlayer(
     Box(
       modifier = Modifier
         .fillMaxWidth()
-        .height(190.dp)
+        .height(195.dp)
         .clip(RoundedCornerShape(16.dp))
         .background(Color(0xFF0A0C14))
         .border(1.dp, Color(0xFF212638), RoundedCornerShape(16.dp))
     ) {
       if (isVideoHardwareActive) {
-        // Renderizador de Vídeo Hardware nativo com TextureView
+        // Renderizador de Vídeo Hardware nativo com TextureView acoplado ao videoPlayer
         AndroidView(
           factory = { ctx ->
             TextureView(ctx).apply {
@@ -324,14 +389,14 @@ fun SynchronizedVideoAudioPlayer(
                 override fun onSurfaceTextureAvailable(st: SurfaceTexture, w: Int, h: Int) {
                   val surface = Surface(st)
                   activeSurface = surface
-                  mediaPlayer?.setSurface(surface)
+                  videoPlayer?.setSurface(surface)
                 }
 
                 override fun onSurfaceTextureSizeChanged(st: SurfaceTexture, w: Int, h: Int) {}
                 override fun onSurfaceTextureDestroyed(st: SurfaceTexture): Boolean {
                   activeSurface?.release()
                   activeSurface = null
-                  mediaPlayer?.setSurface(null)
+                  videoPlayer?.setSurface(null)
                   return true
                 }
 
@@ -342,7 +407,7 @@ fun SynchronizedVideoAudioPlayer(
           modifier = Modifier.matchParentSize()
         )
       } else {
-        // Thumbnail do Vídeo com Efeito Cinemático Dinâmico
+        // Poster / Thumbnail Cinemática com animação pulsante reativa ao áudio
         AsyncImage(
           model = thumbnailUrl,
           contentDescription = "Preview do Vídeo",
@@ -350,7 +415,7 @@ fun SynchronizedVideoAudioPlayer(
           modifier = Modifier.matchParentSize()
         )
 
-        // Overlay sutil com pulso cinemático sincronizado
+        // Overlay cinematográfico com ondas acústicas em tempo real
         Box(
           modifier = Modifier
             .matchParentSize()
@@ -365,7 +430,7 @@ fun SynchronizedVideoAudioPlayer(
         )
       }
 
-      // Selos Técnicos do Vídeo no Topo
+      // Selos Técnicos do Vídeo e Áudio no Topo da Tela
       Row(
         modifier = Modifier
           .fillMaxWidth()
@@ -384,12 +449,12 @@ fun SynchronizedVideoAudioPlayer(
             Icon(
               painter = painterResource(id = R.drawable.ic_video),
               contentDescription = null,
-              tint = Color(0xFF00E5FF),
+              tint = if (isVideoHardwareActive) Color(0xFF00E5FF) else Color(0xFFFFB300),
               modifier = Modifier.size(11.dp)
             )
             Spacer(modifier = Modifier.width(4.dp))
             Text(
-              text = "preview.m4v • 1080p 30fps",
+              text = if (isVideoHardwareActive) "preview.m4v (Vídeo Sincronizado)" else "preview.m4v (Sincronizado)",
               fontSize = 9.sp,
               fontFamily = FontFamily.Monospace,
               fontWeight = FontWeight.Bold,
@@ -414,7 +479,7 @@ fun SynchronizedVideoAudioPlayer(
             )
             Spacer(modifier = Modifier.width(4.dp))
             Text(
-              text = "audio.m4a • 192k AAC",
+              text = if (isAudioHardwareActive) "audio.m4a (Master Clock)" else "audio.m4a (Sincronizado)",
               fontSize = 9.sp,
               fontFamily = FontFamily.Monospace,
               fontWeight = FontWeight.Bold,
@@ -447,23 +512,20 @@ fun SynchronizedVideoAudioPlayer(
 
     Spacer(modifier = Modifier.height(10.dp))
 
-    // 3. BARRA DE REPRODUÇÃO & TIMELINE SINCRONIZADA
+    // 3. BARRA DE REPRODUÇÃO & TIMELINE UNIFICADA (VÍDEO + ÁUDIO)
     Slider(
       value = currentPositionMs.toFloat(),
       onValueChange = { newMs ->
-        currentPositionMs = newMs.toLong()
-        mediaPlayer?.let { mp ->
-          try {
-            mp.seekTo(newMs.toInt())
-          } catch (_: Exception) {}
-        }
+        performSeek(newMs.toLong())
       },
       valueRange = 0f..totalDurationMs.toFloat(),
       colors = SliderDefaults.colors(
         thumbColor = MaterialTheme.colorScheme.primary,
         activeTrackColor = MaterialTheme.colorScheme.primary
       ),
-      modifier = Modifier.fillMaxWidth()
+      modifier = Modifier
+        .fillMaxWidth()
+        .testTag("synchronized_timeline_slider")
     )
 
     Row(
@@ -517,7 +579,7 @@ fun SynchronizedVideoAudioPlayer(
 
     Spacer(modifier = Modifier.height(10.dp))
 
-    // 4. CONTROLES DE REPRODUÇÃO & ÁUDIO
+    // 4. CONTROLES DE REPRODUÇÃO & ÁUDIO (PLAY, PAUSE, STOP, SEEK -10s/+10s, VOLUME)
     Row(
       modifier = Modifier.fillMaxWidth(),
       horizontalArrangement = Arrangement.SpaceBetween,
@@ -543,7 +605,7 @@ fun SynchronizedVideoAudioPlayer(
             if (isMuted && it > 0f) isMuted = false
           },
           valueRange = 0f..1f,
-          modifier = Modifier.width(90.dp),
+          modifier = Modifier.width(85.dp),
           colors = SliderDefaults.colors(
             thumbColor = MaterialTheme.colorScheme.primary,
             activeTrackColor = MaterialTheme.colorScheme.primary
@@ -551,20 +613,32 @@ fun SynchronizedVideoAudioPlayer(
         )
       }
 
-      // Botões Centrais: Stop e Play/Pause
+      // Botões Centrais de Controle Sincronizado
       Row(verticalAlignment = Alignment.CenterVertically) {
+        // Retroceder 10s
+        IconButton(
+          onClick = { performSeek(currentPositionMs - 10000L) },
+          modifier = Modifier.size(36.dp)
+        ) {
+          Icon(
+            painter = painterResource(id = R.drawable.ic_arrow_back),
+            contentDescription = "Voltar 10s",
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(18.dp)
+          )
+        }
+
+        Spacer(modifier = Modifier.width(4.dp))
+
+        // STOP BUTTON (Ressincroniza e reseta vídeo e áudio para 0)
         FilledIconButton(
           onClick = {
             isPlaying = false
-            currentPositionMs = 0L
-            mediaPlayer?.let { mp ->
-              try {
-                mp.seekTo(0)
-                mp.pause()
-              } catch (_: Exception) {}
-            }
+            performSeek(0L)
           },
-          modifier = Modifier.size(44.dp),
+          modifier = Modifier
+            .size(44.dp)
+            .testTag("player_stop_button"),
           colors = IconButtonDefaults.filledIconButtonColors(
             containerColor = MaterialTheme.colorScheme.surfaceVariant,
             contentColor = MaterialTheme.colorScheme.onSurfaceVariant
@@ -577,11 +651,14 @@ fun SynchronizedVideoAudioPlayer(
           )
         }
 
-        Spacer(modifier = Modifier.width(12.dp))
+        Spacer(modifier = Modifier.width(8.dp))
 
+        // PLAY / PAUSE BUTTON (Inicia e pausa simultaneamente áudio e vídeo)
         FilledIconButton(
           onClick = { isPlaying = !isPlaying },
-          modifier = Modifier.size(54.dp),
+          modifier = Modifier
+            .size(54.dp)
+            .testTag("player_play_pause_button"),
           colors = IconButtonDefaults.filledIconButtonColors(
             containerColor = MaterialTheme.colorScheme.primary,
             contentColor = MaterialTheme.colorScheme.onPrimary
@@ -591,6 +668,21 @@ fun SynchronizedVideoAudioPlayer(
             painter = painterResource(id = if (isPlaying) R.drawable.ic_pause else R.drawable.ic_play),
             contentDescription = if (isPlaying) "Pausar" else "Reproduzir",
             modifier = Modifier.size(26.dp)
+          )
+        }
+
+        Spacer(modifier = Modifier.width(4.dp))
+
+        // Avançar 10s
+        IconButton(
+          onClick = { performSeek(currentPositionMs + 10000L) },
+          modifier = Modifier.size(36.dp)
+        ) {
+          Icon(
+            painter = painterResource(id = R.drawable.ic_arrow_forward),
+            contentDescription = "Avançar 10s",
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(18.dp)
           )
         }
       }
@@ -754,7 +846,6 @@ private fun parseSrtTimestamp(ts: String): Long {
 private fun createDefaultSubtitles(title: String, artist: String, durationSec: Long): List<SubtitleLine> {
   val lines = mutableListOf<SubtitleLine>()
   var currentMs = 1000L
-  val step = 6000L
 
   lines.add(SubtitleLine(1, 1000L, 5000L, "♪ $title ♪"))
   lines.add(SubtitleLine(2, 5500L, 10000L, "Artista: $artist [Karaoke Studio]"))

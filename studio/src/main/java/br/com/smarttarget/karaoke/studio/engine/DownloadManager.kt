@@ -110,7 +110,7 @@ class DownloadManager(
         // 1. Determine base assets path and target GUID asset directory
         val baseAssetsPath = preferencesRepo.baseAssetsFolder.value.ifEmpty { "KaraokeStudio/assets" }
         val guid = item.guid.replace("-", "").lowercase()
-        val baseDir = File(context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS), baseAssetsPath)
+        val baseDir = File(context.getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS), baseAssetsPath)
         val assetDir = File(baseDir, guid)
         if (!assetDir.exists()) assetDir.mkdirs()
 

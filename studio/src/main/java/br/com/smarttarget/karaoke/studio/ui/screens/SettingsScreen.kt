@@ -1,5 +1,8 @@
 package br.com.smarttarget.karaoke.studio.ui.screens
 
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -18,10 +21,13 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
@@ -66,6 +72,26 @@ fun SettingsScreen(viewModel: MainViewModel) {
   var assetsFolderInput by remember(baseAssetsFolder) { mutableStateOf(baseAssetsFolder) }
   var showTerminalLogs by remember { mutableStateOf(false) }
 
+  // Directory Picker usando Storage Access Framework (SAF)
+  val directoryPickerLauncher = rememberLauncherForActivityResult(
+    contract = ActivityResultContracts.OpenDocumentTree()
+  ) { uri: Uri? ->
+    uri?.let {
+      val decoded = Uri.decode(it.toString())
+      val selectedFolder = when {
+        decoded.contains("primary:") -> decoded.substringAfter("primary:")
+        decoded.contains("Documents/") -> "Documentos/" + decoded.substringAfter("Documents/")
+        decoded.contains("Documentos/") -> "Documentos/" + decoded.substringAfter("Documentos/")
+        it.path != null && it.path!!.contains(":") -> it.path!!.substringAfter(":")
+        it.lastPathSegment != null -> it.lastPathSegment!!.replace("primary:", "")
+        else -> "KaraokeStudio/assets"
+      }.trimStart('/').ifEmpty { "KaraokeStudio/assets" }
+
+      assetsFolderInput = selectedFolder
+      viewModel.setBaseAssetsFolder(selectedFolder)
+    }
+  }
+
   val videoResolutions = listOf("1080p", "720p", "480p", "360p")
   val videoFpsOptions = listOf("60 fps", "30 fps", "24 fps")
   val videoCodecs = listOf("H.264 (AVC)", "H.265 (HEVC)", "VP9", "AV1")
@@ -88,14 +114,14 @@ fun SettingsScreen(viewModel: MainViewModel) {
       fontWeight = FontWeight.Bold
     )
     Text(
-      text = "Configure a pasta de assets, características de vídeo e áudio usadas no processamento.",
+      text = "Configure a pasta de assets em Documentos, características de vídeo e áudio usadas no processamento.",
       style = MaterialTheme.typography.bodySmall,
       color = MaterialTheme.colorScheme.onSurfaceVariant
     )
 
     Spacer(modifier = Modifier.height(16.dp))
 
-    // SECTION 1: PASTA DE ARMAZENAMENTO DOS ASSETS
+    // SECTION 1: PASTA DE ARMAZENAMENTO DOS ASSETS (DOCUMENTOS + DIRECTORY PICKER)
     Card(
       shape = RoundedCornerShape(16.dp),
       colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -105,22 +131,58 @@ fun SettingsScreen(viewModel: MainViewModel) {
         .testTag("assets_storage_card")
     ) {
       Column(modifier = Modifier.padding(16.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        Row(
+          modifier = Modifier.fillMaxWidth(),
+          horizontalArrangement = Arrangement.SpaceBetween,
+          verticalAlignment = Alignment.CenterVertically
+        ) {
+          Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+              painter = painterResource(id = R.drawable.ic_folder),
+              contentDescription = null,
+              tint = MaterialTheme.colorScheme.primary,
+              modifier = Modifier.size(22.dp)
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Column {
+              Text(
+                text = "Pasta Base de Assets (Documentos)",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold
+              )
+              Text(
+                text = "Armazenamento no diretório Documentos",
+                fontSize = 11.sp,
+                color = MaterialTheme.colorScheme.primary
+              )
+            }
+          }
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        // Botão Principal do Seletor de Pasta (Directory Picker)
+        Button(
+          onClick = { directoryPickerLauncher.launch(null) },
+          shape = RoundedCornerShape(12.dp),
+          colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+          modifier = Modifier
+            .fillMaxWidth()
+            .testTag("directory_picker_button")
+        ) {
           Icon(
             painter = painterResource(id = R.drawable.ic_folder),
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.size(22.dp)
+            contentDescription = "Directory Picker",
+            modifier = Modifier.size(18.dp)
           )
           Spacer(modifier = Modifier.width(8.dp))
           Text(
-            text = "Pasta Base de Assets no Dispositivo",
-            style = MaterialTheme.typography.titleMedium,
+            text = "Selecionar Pasta (Directory Picker)",
             fontWeight = FontWeight.Bold
           )
         }
 
-        Spacer(modifier = Modifier.height(8.dp))
+        Spacer(modifier = Modifier.height(10.dp))
 
         OutlinedTextField(
           value = assetsFolderInput,
@@ -139,20 +201,87 @@ fun SettingsScreen(viewModel: MainViewModel) {
               tint = MaterialTheme.colorScheme.primary,
               modifier = Modifier.size(20.dp)
             )
+          },
+          trailingIcon = {
+            IconButton(onClick = { directoryPickerLauncher.launch(null) }) {
+              Icon(
+                painter = painterResource(id = R.drawable.ic_folder),
+                contentDescription = "Abrir Seletor",
+                tint = MaterialTheme.colorScheme.primary
+              )
+            }
           }
         )
 
-        Spacer(modifier = Modifier.height(6.dp))
+        Spacer(modifier = Modifier.height(8.dp))
+
+        // Exibição do Caminho Completo em Documentos
+        Surface(
+          shape = RoundedCornerShape(10.dp),
+          color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+          modifier = Modifier.fillMaxWidth()
+        ) {
+          Column(modifier = Modifier.padding(10.dp)) {
+            Text(
+              text = "📁 Caminho no Dispositivo:",
+              fontWeight = FontWeight.Bold,
+              fontSize = 11.sp,
+              color = MaterialTheme.colorScheme.primary
+            )
+            Spacer(modifier = Modifier.height(2.dp))
+            Text(
+              text = "Documentos/$assetsFolderInput/{guid}/",
+              fontSize = 11.sp,
+              fontFamily = FontFamily.Monospace,
+              color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+              text = "Cada asset conterá: audio.m4a, preview.m4v, fft.json, subtitles/ e metadata.json",
+              fontSize = 10.sp,
+              color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
+            )
+          }
+        }
+
+        Spacer(modifier = Modifier.height(10.dp))
+
         Text(
-          text = "Local dos Assets: Downloads/$assetsFolderInput/{guid}/",
+          text = "Atalhos de Pastas em Documentos:",
           fontSize = 11.sp,
-          color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+          fontWeight = FontWeight.SemiBold
         )
-        Text(
-          text = "Cada vídeo receberá um GUID em minúsculas como subpasta com áudio, preview, fft e legendas.",
-          fontSize = 11.sp,
-          color = MaterialTheme.colorScheme.primary
-        )
+        Row(
+          horizontalArrangement = Arrangement.spacedBy(6.dp),
+          modifier = Modifier
+            .horizontalScroll(rememberScrollState())
+            .padding(top = 4.dp)
+        ) {
+          FilterChip(
+            selected = assetsFolderInput == "KaraokeStudio/assets",
+            onClick = {
+              assetsFolderInput = "KaraokeStudio/assets"
+              viewModel.setBaseAssetsFolder("KaraokeStudio/assets")
+            },
+            label = { Text("KaraokeStudio/assets (Padrão)") }
+          )
+          FilterChip(
+            selected = assetsFolderInput == "Karaoke/Musicas",
+            onClick = {
+              assetsFolderInput = "Karaoke/Musicas"
+              viewModel.setBaseAssetsFolder("Karaoke/Musicas")
+            },
+            label = { Text("Karaoke/Musicas") }
+          )
+          FilterChip(
+            selected = assetsFolderInput == "Estudio/Projetos",
+            onClick = {
+              assetsFolderInput = "Estudio/Projetos"
+              viewModel.setBaseAssetsFolder("Estudio/Projetos")
+            },
+            label = { Text("Estudio/Projetos") }
+          )
+        }
       }
     }
 
