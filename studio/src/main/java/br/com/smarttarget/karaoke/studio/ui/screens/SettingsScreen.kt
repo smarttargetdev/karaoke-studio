@@ -223,21 +223,21 @@ fun SettingsScreen(viewModel: MainViewModel) {
         ) {
           Column(modifier = Modifier.padding(10.dp)) {
             Text(
-              text = "📁 Caminho no Dispositivo:",
+              text = "📁 Caminho no SD Interno (fora de Android/data):",
               fontWeight = FontWeight.Bold,
               fontSize = 11.sp,
               color = MaterialTheme.colorScheme.primary
             )
             Spacer(modifier = Modifier.height(2.dp))
             Text(
-              text = "Documentos/$assetsFolderInput/{guid}/",
+              text = "/storage/emulated/0/Documents/$assetsFolderInput/{guid}/",
               fontSize = 11.sp,
               fontFamily = FontFamily.Monospace,
               color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Spacer(modifier = Modifier.height(4.dp))
             Text(
-              text = "Cada asset conterá: audio.m4a, preview.m4v, fft.json, subtitles/ e metadata.json",
+              text = "Os recursos (audio, preview, fft.json e subtitles/) são extraídos diretamente no SD interno compartilhado do dispositivo.",
               fontSize = 10.sp,
               color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
             )

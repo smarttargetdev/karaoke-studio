@@ -107,12 +107,14 @@ class DownloadManager(
         val entity = downloadDao.getDownloadById(id) ?: return@launch
         val item = entity.toModel()
 
-        // 1. Determine base assets path and target GUID asset directory
+        // 1. Determine base assets path and target GUID asset directory no SD interno do dispositivo (fora de Android/data)
         val baseAssetsPath = preferencesRepo.baseAssetsFolder.value.ifEmpty { "KaraokeStudio/assets" }
         val guid = item.guid.replace("-", "").lowercase()
-        val baseDir = File(context.getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS), baseAssetsPath)
+        val baseDir = resolveInternalSdStorageDirectory(baseAssetsPath)
         val assetDir = File(baseDir, guid)
         if (!assetDir.exists()) assetDir.mkdirs()
+
+        android.util.Log.d("DownloadManager", "[download] Diretório do asset configurado no SD interno: ${assetDir.absolutePath}")
 
         // Subtitles directory inside asset folder
         val subtitlesDir = File(assetDir, "subtitles")
@@ -450,5 +452,54 @@ Artista: $artist
 00:00:22,500 --> 00:00:28,000
 ♪ Cante com a alma e sinta a harmonia ♪
     """.trimIndent()
+  }
+
+  /**
+   * Resolve o diretório no SD Card Interno do dispositivo (armazenamento primário compartilhado),
+   * garantindo que a extração dos recursos seja feita diretamente no caminho configurado e NUNCA
+   * dentro do diretório privado do aplicativo em "Android/data/".
+   */
+  fun resolveInternalSdStorageDirectory(configuredPath: String): File {
+    val clean = configuredPath.trim()
+    val internalSdRoot = Environment.getExternalStorageDirectory() // /storage/emulated/0
+    val targetDir = when {
+      clean.startsWith("/storage/") || clean.startsWith("/sdcard/") -> {
+        File(clean)
+      }
+      clean.startsWith("primary:", ignoreCase = true) -> {
+        File(internalSdRoot, clean.substringAfter("primary:").trimStart('/'))
+      }
+      clean.startsWith("Documents/", ignoreCase = true) || clean.startsWith("Documentos/", ignoreCase = true) -> {
+        val sub = clean.substringAfter("/").trimStart('/')
+        File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS), sub)
+      }
+      clean.startsWith("Download/", ignoreCase = true) || clean.startsWith("Downloads/", ignoreCase = true) -> {
+        val sub = clean.substringAfter("/").trimStart('/')
+        File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), sub)
+      }
+      clean.startsWith("Music/", ignoreCase = true) || clean.startsWith("Musicas/", ignoreCase = true) || clean.startsWith("Músicas/", ignoreCase = true) -> {
+        val sub = clean.substringAfter("/").trimStart('/')
+        File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MUSIC), sub)
+      }
+      clean.startsWith("/") -> {
+        File(internalSdRoot, clean.trimStart('/'))
+      }
+      else -> {
+        // SD interno do dispositivo em Documents/$clean (ex: /storage/emulated/0/Documents/KaraokeStudio/assets)
+        File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS), clean)
+      }
+    }
+
+    try {
+      if (!targetDir.exists()) targetDir.mkdirs()
+    } catch (_: Exception) {}
+
+    return if (targetDir.exists() || targetDir.canWrite()) {
+      targetDir
+    } else {
+      val fallback = File(internalSdRoot, "Documents/$clean")
+      try { if (!fallback.exists()) fallback.mkdirs() } catch (_: Exception) {}
+      if (fallback.exists()) fallback else targetDir
+    }
   }
 }
